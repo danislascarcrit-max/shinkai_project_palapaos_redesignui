@@ -33,7 +33,12 @@ import android.database.ContentObserver
 import android.graphics.PixelFormat
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.graphics.Bitmap
+import android.media.MediaMetadata
 import android.media.projection.StopReason
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
@@ -98,6 +103,9 @@ class DynamicIslandChargingView @JvmOverloads constructor(
     private var chargingContentView: LinearLayout? = null
     private var torchContentView: LinearLayout? = null
     private var recordContentView: LinearLayout? = null
+    private var mediaContentView: LinearLayout? = null
+    private var mediaArtView: ImageView? = null
+    private var mediaTitleView: TextView? = null
 
     private var statusTextView: TextView? = null
     private var batteryTextView: TextView? = null
@@ -122,6 +130,11 @@ class DynamicIslandChargingView @JvmOverloads constructor(
     private var expandedRecordTimer: TextView? = null
     private var expandedBatteryText: TextView? = null
     private var expandedTorchStatus: TextView? = null
+    private var expandedMediaContent: LinearLayout? = null
+    private var expandedMediaArt: ImageView? = null
+    private var expandedMediaTitle: TextView? = null
+    private var expandedMediaArtist: TextView? = null
+    private var expandedMediaPlayIcon: ImageView? = null
     private var isExpandedCardShowing = false
 
     // --- State Machine ---
@@ -132,6 +145,12 @@ class DynamicIslandChargingView @JvmOverloads constructor(
     private var isTorchOn: Boolean = false
     private var isRecording: Boolean = false
     private var recordingStartTimestamp: Long = 0L
+    private var isMediaPlaying: Boolean = false
+    private var mediaTitle: String = ""
+    private var mediaArtist: String = ""
+    private var mediaArtBitmap: Bitmap? = null
+    private var activeMediaController: MediaController? = null
+    private var mediaSessionManager: MediaSessionManager? = null
 
     // Dual-island priority: true = Record is in main capsule, Torch is in meta-ball
     private var prioritizeRecord: Boolean = true
@@ -163,6 +182,38 @@ class DynamicIslandChargingView @JvmOverloads constructor(
                 mainHandler.postDelayed(this, 1000L)
             }
         }
+    }
+
+    private val mediaPollRunnable = object : Runnable {
+        override fun run() {
+            pollActiveMediaSessions()
+            mainHandler.postDelayed(this, 1500L)
+        }
+    }
+
+    private fun pollActiveMediaSessions() {
+        try {
+            val msm = mediaSessionManager ?: (context.getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager).also { mediaSessionManager = it }
+            val controllers = msm?.getActiveSessions(null) ?: emptyList()
+            val playingCtrl = controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+            val wasPlaying = isMediaPlaying
+            val oldTitle = mediaTitle
+            if (playingCtrl != null) {
+                activeMediaController = playingCtrl
+                val meta = playingCtrl.metadata
+                mediaTitle = meta?.getString(MediaMetadata.METADATA_KEY_TITLE)?.takeIf { it.isNotBlank() } ?: "Playing Music"
+                mediaArtist = meta?.getString(MediaMetadata.METADATA_KEY_ARTIST)?.takeIf { it.isNotBlank() } ?: ""
+                mediaArtBitmap = meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                    ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                    ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
+                isMediaPlaying = true
+            } else {
+                isMediaPlaying = false
+            }
+            if (wasPlaying != isMediaPlaying || (isMediaPlaying && oldTitle != mediaTitle)) {
+                refreshIslandState(animate = wasPlaying != isMediaPlaying)
+            }
+        } catch (_: Throwable) {}
     }
 
     private val expandedAutoCollapseRunnable = Runnable {
@@ -406,6 +457,10 @@ class DynamicIslandChargingView @JvmOverloads constructor(
             chargingContentView = findViewById(R.id.island_charging_content)
             torchContentView = findViewById(R.id.island_torch_content)
             recordContentView = findViewById(R.id.island_record_content)
+            mediaContentView = findViewById(R.id.island_media_content)
+            mediaArtView = findViewById(R.id.island_media_art)
+            mediaTitleView = findViewById(R.id.island_media_title)
+            mediaArtView?.clipToOutline = true
 
             statusTextView = findViewById(R.id.island_status_text)
             batteryTextView = findViewById(R.id.island_battery_text)
@@ -505,6 +560,8 @@ class DynamicIslandChargingView @JvmOverloads constructor(
                 settingsObserver
             )
 
+            mainHandler.removeCallbacks(mediaPollRunnable)
+            mainHandler.post(mediaPollRunnable)
             refreshIslandState(animate = false)
             ensureStatusBarSideViews()
         } catch (t: Throwable) {
@@ -527,6 +584,7 @@ class DynamicIslandChargingView @JvmOverloads constructor(
 
         mainHandler.removeCallbacks(chargingDismissRunnable)
         mainHandler.removeCallbacks(recordTickerRunnable)
+        mainHandler.removeCallbacks(mediaPollRunnable)
         mainHandler.removeCallbacks(expandedAutoCollapseRunnable)
         currentCompactAnimSet?.cancel()
         dismissExpandedCard()
@@ -581,7 +639,8 @@ class DynamicIslandChargingView @JvmOverloads constructor(
         val hasRecord = isRecording || screenRecordController?.isRecording == true
         isRecording = hasRecord
 
-        if (!hasCharging && !hasTorch && !hasRecord) {
+        val hasMedia = isMediaPlaying
+        if (!hasCharging && !hasTorch && !hasRecord && !hasMedia) {
             dismissIsland()
             dismissExpandedCard()
             return
@@ -613,6 +672,9 @@ class DynamicIslandChargingView @JvmOverloads constructor(
             metaSlot = IslandSlot.NONE
         } else if (hasTorch) {
             mainSlot = IslandSlot.TORCH
+            metaSlot = if (hasMedia) IslandSlot.MEDIA else IslandSlot.NONE
+        } else if (hasMedia) {
+            mainSlot = IslandSlot.MEDIA
             metaSlot = IslandSlot.NONE
         }
 
@@ -625,6 +687,7 @@ class DynamicIslandChargingView @JvmOverloads constructor(
         chargingContentView?.visibility = if (mainSlot == IslandSlot.CHARGING) View.VISIBLE else View.GONE
         torchContentView?.visibility = if (mainSlot == IslandSlot.TORCH) View.VISIBLE else View.GONE
         recordContentView?.visibility = if (mainSlot == IslandSlot.RECORD) View.VISIBLE else View.GONE
+        mediaContentView?.visibility = if (mainSlot == IslandSlot.MEDIA) View.VISIBLE else View.GONE
 
         when (mainSlot) {
             IslandSlot.CHARGING -> {
@@ -637,6 +700,14 @@ class DynamicIslandChargingView @JvmOverloads constructor(
             }
             IslandSlot.RECORD -> {
                 updateRecordTimer()
+            }
+            IslandSlot.MEDIA -> {
+                mediaTitleView?.text = mediaTitle
+                if (mediaArtBitmap != null) {
+                    mediaArtView?.setImageBitmap(mediaArtBitmap)
+                } else {
+                    mediaArtView?.setImageResource(R.drawable.ic_oneui_media_play)
+                }
             }
             IslandSlot.NONE -> {}
         }
@@ -657,6 +728,10 @@ class DynamicIslandChargingView @JvmOverloads constructor(
             } else if (metaSlot == IslandSlot.RECORD) {
                 metaIconView?.visibility = View.GONE
                 metaRecordDotView?.visibility = View.VISIBLE
+            } else if (metaSlot == IslandSlot.MEDIA) {
+                metaIconView?.setImageResource(R.drawable.ic_oneui_media_play)
+                metaIconView?.visibility = View.VISIBLE
+                metaRecordDotView?.visibility = View.GONE
             }
 
             if (animate && wasGone) {
@@ -831,7 +906,9 @@ class DynamicIslandChargingView @JvmOverloads constructor(
                 } catch (_: Throwable) {}
 
                 prioritizeRecord = !prioritizeRecord
-                refreshIslandState(animate = false)
+                mainHandler.removeCallbacks(mediaPollRunnable)
+            mainHandler.post(mediaPollRunnable)
+            refreshIslandState(animate = false)
 
                 // Phase 2: Elastic Spring Ejection of new secondary droplet & capsule recovery
                 // Capsule rebounds slightly to the right, then settles with smooth liquid damping
@@ -930,6 +1007,37 @@ class DynamicIslandChargingView @JvmOverloads constructor(
             expandedRecordTimer = root.findViewById(R.id.expanded_record_timer)
             expandedBatteryText = root.findViewById(R.id.expanded_battery_text)
             expandedTorchStatus = root.findViewById(R.id.expanded_torch_status)
+            expandedMediaContent = root.findViewById(R.id.expanded_media_content)
+            expandedMediaArt = root.findViewById(R.id.expanded_media_art)
+            expandedMediaTitle = root.findViewById(R.id.expanded_media_title)
+            expandedMediaArtist = root.findViewById(R.id.expanded_media_artist)
+            expandedMediaPlayIcon = root.findViewById(R.id.expanded_media_play_icon)
+            expandedMediaArt?.clipToOutline = true
+
+            root.findViewById<View>(R.id.expanded_media_prev_btn)?.setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                try { activeMediaController?.transportControls?.skipToPrevious() } catch (_: Throwable) {}
+                mainHandler.postDelayed({ pollActiveMediaSessions() }, 350L)
+            }
+            root.findViewById<View>(R.id.expanded_media_play_btn)?.setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                try {
+                    val state = activeMediaController?.playbackState?.state
+                    if (state == PlaybackState.STATE_PLAYING) {
+                        activeMediaController?.transportControls?.pause()
+                        expandedMediaPlayIcon?.setImageResource(R.drawable.ic_oneui_media_play)
+                    } else {
+                        activeMediaController?.transportControls?.play()
+                        expandedMediaPlayIcon?.setImageResource(R.drawable.ic_oneui_media_pause)
+                    }
+                } catch (_: Throwable) {}
+                mainHandler.postDelayed({ pollActiveMediaSessions() }, 500L)
+            }
+            root.findViewById<View>(R.id.expanded_media_next_btn)?.setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                try { activeMediaController?.transportControls?.skipToNext() } catch (_: Throwable) {}
+                mainHandler.postDelayed({ pollActiveMediaSessions() }, 350L)
+            }
 
             // Primary Controls
             val stopBtn: FrameLayout? = root.findViewById(R.id.expanded_record_stop_btn)
@@ -967,6 +1075,7 @@ class DynamicIslandChargingView @JvmOverloads constructor(
                 isRecording -> IslandSlot.RECORD
                 isTorchOn -> IslandSlot.TORCH
                 isCharging -> IslandSlot.CHARGING
+                isMediaPlaying -> IslandSlot.MEDIA
                 else -> IslandSlot.NONE
             }
 
@@ -1042,10 +1151,19 @@ class DynamicIslandChargingView @JvmOverloads constructor(
         expandedRecordContent?.visibility = if (slot == IslandSlot.RECORD) View.VISIBLE else View.GONE
         expandedTorchContent?.visibility = if (slot == IslandSlot.TORCH) View.VISIBLE else View.GONE
         expandedChargingContent?.visibility = if (slot == IslandSlot.CHARGING) View.VISIBLE else View.GONE
+        expandedMediaContent?.visibility = if (slot == IslandSlot.MEDIA) View.VISIBLE else View.GONE
 
         when (slot) {
             IslandSlot.RECORD -> {
                 updateRecordTimer()
+            }
+            IslandSlot.MEDIA -> {
+                mediaTitleView?.text = mediaTitle
+                if (mediaArtBitmap != null) {
+                    mediaArtView?.setImageBitmap(mediaArtBitmap)
+                } else {
+                    mediaArtView?.setImageResource(R.drawable.ic_oneui_media_play)
+                }
             }
             IslandSlot.TORCH -> {
                 val secureTorch = try {
@@ -1056,6 +1174,16 @@ class DynamicIslandChargingView @JvmOverloads constructor(
             }
             IslandSlot.CHARGING -> {
                 expandedBatteryText?.text = if (lastBatteryLevel >= 0) "$lastBatteryLevel%" else ""
+            }
+            IslandSlot.MEDIA -> {
+                expandedMediaTitle?.text = mediaTitle
+                expandedMediaArtist?.text = if (mediaArtist.isNotEmpty()) mediaArtist else "Now Playing"
+                if (mediaArtBitmap != null) {
+                    expandedMediaArt?.setImageBitmap(mediaArtBitmap)
+                } else {
+                    expandedMediaArt?.setImageResource(R.drawable.ic_oneui_media_play)
+                }
+                expandedMediaPlayIcon?.setImageResource(R.drawable.ic_oneui_media_pause)
             }
             IslandSlot.NONE -> {
                 dismissExpandedCard()
@@ -1125,7 +1253,9 @@ class DynamicIslandChargingView @JvmOverloads constructor(
                             ?.setInterpolator(PathInterpolator(0.18f, 1.0f, 0.35f, 1.0f))
                             ?.start()
                     }
-                    refreshIslandState(animate = false)
+                    mainHandler.removeCallbacks(mediaPollRunnable)
+            mainHandler.post(mediaPollRunnable)
+            refreshIslandState(animate = false)
                 }
                 .start()
         } ?: run {
@@ -1141,6 +1271,8 @@ class DynamicIslandChargingView @JvmOverloads constructor(
             capsuleView?.scaleX = 1.0f
             capsuleView?.scaleY = 1.0f
             resetStatusBarSides()
+            mainHandler.removeCallbacks(mediaPollRunnable)
+            mainHandler.post(mediaPollRunnable)
             refreshIslandState(animate = false)
         }
     }
@@ -1329,11 +1461,13 @@ class DynamicIslandChargingView @JvmOverloads constructor(
 
     private fun startRecordTicker() {
         mainHandler.removeCallbacks(recordTickerRunnable)
+        mainHandler.removeCallbacks(mediaPollRunnable)
         mainHandler.post(recordTickerRunnable)
     }
 
     private fun stopRecordTicker() {
         mainHandler.removeCallbacks(recordTickerRunnable)
+        mainHandler.removeCallbacks(mediaPollRunnable)
     }
 
     private fun updateRecordTimer() {
@@ -1398,7 +1532,8 @@ class DynamicIslandChargingView @JvmOverloads constructor(
         NONE,
         CHARGING,
         TORCH,
-        RECORD
+        RECORD,
+        MEDIA
     }
 
     companion object {

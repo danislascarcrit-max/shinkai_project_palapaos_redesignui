@@ -207,6 +207,44 @@
                 </FrameLayout>
             </LinearLayout>
 
+
+            <!-- 4. Music / Media Playback Content -->
+            <LinearLayout
+                android:id="@+id/island_media_content"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:minWidth="136dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="12dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/island_media_art"
+                    android:layout_width="23dp"
+                    android:layout_height="23dp"
+                    android:scaleType="centerCrop"
+                    android:background="@drawable/dynamic_island_circle_bg"
+                    android:src="@drawable/ic_oneui_media_play"
+                    android:contentDescription="@null" />
+
+                <View
+                    android:id="@+id/island_media_spacer"
+                    android:layout_width="34dp"
+                    android:layout_height="1dp" />
+
+                <TextView
+                    android:id="@+id/island_media_title"
+                    android:layout_width="64dp"
+                    android:layout_height="wrap_content"
+                    android:text="Music"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-bold"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+            </LinearLayout>
         </FrameLayout>
 
     </LinearLayout>

@@ -285,6 +285,113 @@
 
         </LinearLayout>
 
+
+        <!-- 4. Music / Media Playback Expanded Controls -->
+        <LinearLayout
+            android:id="@+id/expanded_media_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/expanded_media_art"
+                android:layout_width="50dp"
+                android:layout_height="50dp"
+                android:scaleType="centerCrop"
+                android:background="@drawable/dynamic_island_btn_bg"
+                android:src="@drawable/ic_oneui_media_play"
+                android:contentDescription="@null" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="8dp"
+                android:orientation="vertical"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/expanded_media_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Music"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:fontFamily="sans-serif-bold"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/expanded_media_artist"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="Artist"
+                    android:textColor="#AEAEB2"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <FrameLayout
+                android:id="@+id/expanded_media_prev_btn"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:background="@drawable/dynamic_island_btn_bg"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_media_previous"
+                    android:tint="#FFFFFF"
+                    android:contentDescription="@null" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/expanded_media_play_btn"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/dynamic_island_btn_bg"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:id="@+id/expanded_media_play_icon"
+                    android:layout_width="20dp"
+                    android:layout_height="20dp"
+                    android:layout_gravity="center"
+                    android:src="@drawable/ic_oneui_media_pause"
+                    android:contentDescription="@null" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/expanded_media_next_btn"
+                android:layout_width="38dp"
+                android:layout_height="38dp"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/dynamic_island_btn_bg"
+                android:clickable="true"
+                android:focusable="true">
+
+                <ImageView
+                    android:layout_width="18dp"
+                    android:layout_height="18dp"
+                    android:layout_gravity="center"
+                    android:src="@android:drawable/ic_media_next"
+                    android:tint="#FFFFFF"
+                    android:contentDescription="@null" />
+            </FrameLayout>
+        </LinearLayout>
+
     </FrameLayout>
 
 </FrameLayout>
